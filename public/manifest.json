@@ -1,0 +1,22 @@
+{
+  "name": "SCOTUS Tracker",
+  "short_name": "SCOTUS",
+  "description": "A law library in your pocket. The Bluebook meets the terminal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F1EA",
+  "theme_color": "#F4F1EA",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

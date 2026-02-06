@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#F4F1EA"/>
+  <text x="256" y="200" text-anchor="middle" font-family="Georgia, serif" font-size="72" font-weight="400" fill="#222222" letter-spacing="4">SCOTUS</text>
+  <line x1="128" y1="230" x2="384" y2="230" stroke="#222222" stroke-width="1"/>
+  <text x="256" y="290" text-anchor="middle" font-family="Menlo, monospace" font-size="28" fill="#888888" letter-spacing="2">CASE TRACKER</text>
+  <text x="256" y="370" text-anchor="middle" font-family="Georgia, serif" font-size="120" font-style="italic" fill="#222222" opacity="0.15">S</text>
+</svg>
