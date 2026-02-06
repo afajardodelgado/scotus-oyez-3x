@@ -94,6 +94,69 @@ export async function fetchCaseDetail(
   return data;
 }
 
+export interface VoteSplitStats {
+  label: string;
+  count: number;
+}
+
+export async function fetchTermStats(
+  term: string
+): Promise<{ splits: VoteSplitStats[]; totalCases: number }> {
+  const listRes = await fetch(
+    `${OYEZ_BASE}/cases?per_page=0&filter=term:${term}`,
+    { next: { revalidate: 3600 } }
+  );
+
+  if (!listRes.ok) {
+    throw new Error(`Failed to fetch cases: ${listRes.status}`);
+  }
+
+  const listData: OyezCaseListItem[] = await listRes.json();
+
+  const detailPromises = listData.map((c) =>
+    fetch(c.href, { next: { revalidate: 3600 } })
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
+  );
+
+  const details: (OyezCase | null)[] = await Promise.all(detailPromises);
+
+  const splitCounts: Record<string, number> = {
+    Unanimous: 0,
+    "8-1": 0,
+    "7-2": 0,
+    "6-3": 0,
+    "5-4": 0,
+  };
+
+  let decidedCount = 0;
+
+  for (const detail of details) {
+    if (!detail?.decisions?.[0]) continue;
+    const d = detail.decisions[0];
+    const maj = d.majority_vote;
+    const min = d.minority_vote;
+    if (maj === undefined || min === undefined) continue;
+
+    decidedCount++;
+
+    if (min === 0) {
+      splitCounts["Unanimous"]++;
+    } else {
+      const key = `${maj}-${min}`;
+      if (key in splitCounts) {
+        splitCounts[key]++;
+      }
+    }
+  }
+
+  const splits: VoteSplitStats[] = Object.entries(splitCounts).map(
+    ([label, count]) => ({ label, count })
+  );
+
+  return { splits, totalCases: decidedCount };
+}
+
 export async function fetchAvailableTerms(): Promise<string[]> {
   const currentYear = new Date().getFullYear();
   const terms: string[] = [];

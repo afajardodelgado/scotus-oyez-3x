@@ -5,9 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 export default function TermSelector({
   terms,
   currentTerm,
+  baseUrl = "/",
 }: {
   terms: string[];
   currentTerm: string;
+  baseUrl?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -15,7 +17,7 @@ export default function TermSelector({
   const handleTermChange = (term: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("term", term);
-    router.push(`/?${params.toString()}`);
+    router.push(`${baseUrl}?${params.toString()}`);
   };
 
   return (

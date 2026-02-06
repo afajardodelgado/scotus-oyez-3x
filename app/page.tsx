@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { fetchRecentCases, fetchAvailableTerms } from "./lib/api";
 import CaseListItem from "./components/CaseListItem";
 import TabBar from "./components/TabBar";
@@ -23,9 +24,17 @@ export default async function Home({
         <div className="px-4 pt-[env(safe-area-inset-top)]">
           <div className="flex items-baseline justify-between py-3">
             <h1 className="font-serif text-xl text-ink">Recent Decisions</h1>
-            <span className="font-mono text-xs text-fade tracking-wider">
-              {cases.length} cases
-            </span>
+            <div className="flex items-baseline gap-3">
+              <span className="font-mono text-xs text-fade tracking-wider">
+                {cases.length} cases
+              </span>
+              <Link
+                href={`/stats?term=${currentTerm}`}
+                className="font-mono text-xs text-ink tracking-wider border border-ink px-2.5 py-1 active:bg-ink active:text-canvas transition-colors"
+              >
+                View Term Stats
+              </Link>
+            </div>
           </div>
         </div>
         <Suspense>
