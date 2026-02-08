@@ -1,0 +1,21 @@
+import TabBar from "../components/TabBar";
+
+export default function SearchPage() {
+  return (
+    <div className="min-h-dvh bg-canvas pb-16">
+      <header className="sticky top-0 z-40 bg-canvas/95 backdrop-blur-sm border-b border-divider">
+        <div className="px-4 pt-[env(safe-area-inset-top)]">
+          <div className="py-3">
+            <h1 className="font-serif text-xl text-ink">Search</h1>
+          </div>
+        </div>
+      </header>
+      <main className="flex flex-col items-center justify-center py-20 px-4">
+        <p className="font-mono text-sm text-fade tracking-wider">
+          Search coming soon.
+        </p>
+      </main>
+      <TabBar />
+    </div>
+  );
+}
