@@ -1,5 +1,16 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+**Important:** Do not add a `package.json` or `package-lock.json` at the repo root (`scotus/`). All dependencies live in `scotus-app/`; a duplicate lockfile causes Turbopack to resolve modules from the wrong directory.
+
+## Data Caching
+
+Case data is cached in a Railway PostgreSQL database. Decided cases are immutable and never re-fetched.
+
+```
+Request → Check DB → Cache hit? → Return from DB
+                   → Cache miss? → Fetch from Oyez API → Store in DB → Return
+```
+
 ## Getting Started
 
 First, run the development server:
