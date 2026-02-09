@@ -567,6 +567,44 @@ export async function fetchJusticeAgreement(
   return { justices: justiceList, matrix, caseCount: caseVotes.length };
 }
 
+export interface ConstitutionArticle {
+  article: string;
+  article_title: string;
+  section_count: number;
+}
+
+export interface ConstitutionSection {
+  id: number;
+  article: string;
+  article_title: string;
+  section_number: number | null;
+  section_title: string | null;
+  text: string;
+}
+
+export async function fetchConstitutionArticles(): Promise<ConstitutionArticle[]> {
+  const { rows } = await pool.query<ConstitutionArticle>(
+    `SELECT article, article_title, COUNT(*)::int AS section_count
+     FROM constitution_sections
+     GROUP BY article, article_title
+     ORDER BY MIN(sort_order)`
+  );
+  return rows;
+}
+
+export async function fetchConstitutionArticle(
+  article: string
+): Promise<ConstitutionSection[]> {
+  const { rows } = await pool.query<ConstitutionSection>(
+    `SELECT id, article, article_title, section_number, section_title, text
+     FROM constitution_sections
+     WHERE article = $1
+     ORDER BY sort_order`,
+    [article]
+  );
+  return rows;
+}
+
 export async function fetchAvailableTerms(): Promise<string[]> {
   const currentYear = new Date().getFullYear();
   const terms: string[] = [];

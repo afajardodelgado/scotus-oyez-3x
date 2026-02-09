@@ -34,6 +34,20 @@ async function migrate() {
 
   console.log("Cases table ready.");
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS constitution_sections (
+      id            SERIAL PRIMARY KEY,
+      article       TEXT NOT NULL,
+      article_title TEXT NOT NULL,
+      section_number INTEGER,
+      section_title TEXT,
+      text          TEXT NOT NULL,
+      sort_order    INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  console.log("Constitution table ready.");
+
   // Add written_opinion column if it doesn't exist
   await pool.query(`
     ALTER TABLE cases ADD COLUMN IF NOT EXISTS written_opinion JSONB DEFAULT '[]';
