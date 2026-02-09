@@ -46,7 +46,8 @@ function parseVotesFromConclusion(
 ): { majority: number; minority: number } | null {
   if (!conclusion) return null;
   const text = conclusion.replace(/<[^>]+>/g, "");
-  const splitMatch = text.match(/(\d+)[\u2013-](\d+)\s+majority/);
+  // Match "6-3 majority", "5-4 opinion", "6–3 majority" etc.
+  const splitMatch = text.match(/(\d+)[\u2013-](\d+)\s+(?:majority|opinion)/);
   if (splitMatch) {
     return {
       majority: parseInt(splitMatch[1], 10),
@@ -56,6 +57,10 @@ function parseVotesFromConclusion(
   if (/\bunanimous(?:ly)?\b/i.test(text)) {
     return { majority: 9, minority: 0 };
   }
+  if (/\bequally divided\b/i.test(text)) {
+    return { majority: 4, minority: 4 };
+  }
+  // "authored the majority opinion" with no vote count — can't determine split
   return null;
 }
 
@@ -85,6 +90,7 @@ interface CaseRow {
   href: string;
   decisions: unknown;
   advocates: unknown;
+  written_opinion: unknown;
   timeline: { event: string; dates: number[] }[];
   is_decided: boolean;
 }
@@ -146,6 +152,7 @@ function rowToOyezCase(row: CaseRow): OyezCase {
     conclusion: row.conclusion || "",
     advocates: row.advocates as OyezCase["advocates"],
     decisions: row.decisions as OyezCase["decisions"],
+    written_opinion: row.written_opinion as OyezCase["written_opinion"],
     timeline: row.timeline as OyezCase["timeline"],
   };
 }
@@ -164,8 +171,8 @@ async function upsertCase(detail: OyezCase): Promise<void> {
       term, docket_number, name, first_party, second_party,
       description, facts_of_the_case, question, conclusion,
       decision_date, citation, justia_url, href,
-      decisions, advocates, timeline, is_decided, fetched_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+      decisions, advocates, written_opinion, timeline, is_decided, fetched_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
     ON CONFLICT (term, docket_number) DO UPDATE SET
       name = EXCLUDED.name,
       first_party = EXCLUDED.first_party,
@@ -180,6 +187,7 @@ async function upsertCase(detail: OyezCase): Promise<void> {
       href = EXCLUDED.href,
       decisions = EXCLUDED.decisions,
       advocates = EXCLUDED.advocates,
+      written_opinion = EXCLUDED.written_opinion,
       timeline = EXCLUDED.timeline,
       is_decided = EXCLUDED.is_decided,
       fetched_at = NOW()`,
@@ -199,6 +207,7 @@ async function upsertCase(detail: OyezCase): Promise<void> {
       detail.href,
       JSON.stringify(detail.decisions || []),
       JSON.stringify(detail.advocates || []),
+      JSON.stringify(detail.written_opinion || []),
       JSON.stringify(detail.timeline || []),
       decided,
     ]
@@ -326,13 +335,7 @@ export async function fetchTermStats(
   );
 
   if (rows.length > 0) {
-    const splitCounts: Record<string, number> = {
-      Unanimous: 0,
-      "8-1": 0,
-      "7-2": 0,
-      "6-3": 0,
-      "5-4": 0,
-    };
+    const splitCounts: Record<string, number> = {};
     let decidedCount = 0;
 
     for (const row of rows) {
@@ -350,17 +353,20 @@ export async function fetchTermStats(
       }
 
       decidedCount++;
-      if (min === 0) {
-        splitCounts["Unanimous"]++;
-      } else {
-        const key = `${maj}-${min}`;
-        if (key in splitCounts) splitCounts[key]++;
-      }
+      const key = min === 0 ? "Unanimous" : `${maj}-${min}`;
+      splitCounts[key] = (splitCounts[key] || 0) + 1;
     }
 
-    const splits: VoteSplitStats[] = Object.entries(splitCounts).map(
-      ([label, count]) => ({ label, count })
-    );
+    // Sort: Unanimous first, then by minority vote ascending (tightest splits last)
+    const splits: VoteSplitStats[] = Object.entries(splitCounts)
+      .sort(([a], [b]) => {
+        if (a === "Unanimous") return -1;
+        if (b === "Unanimous") return 1;
+        const aMin = parseInt(a.split("-")[1]) || 0;
+        const bMin = parseInt(b.split("-")[1]) || 0;
+        return aMin - bMin;
+      })
+      .map(([label, count]) => ({ label, count }));
     return { splits, totalCases: decidedCount };
   }
 
@@ -384,14 +390,7 @@ export async function fetchTermStats(
 
   const details: (OyezCase | null)[] = await Promise.all(detailPromises);
 
-  const splitCounts: Record<string, number> = {
-    Unanimous: 0,
-    "8-1": 0,
-    "7-2": 0,
-    "6-3": 0,
-    "5-4": 0,
-  };
-
+  const splitCounts: Record<string, number> = {};
   let decidedCount = 0;
 
   for (const detail of details) {
@@ -402,20 +401,19 @@ export async function fetchTermStats(
     if (maj === undefined || min === undefined) continue;
 
     decidedCount++;
-
-    if (min === 0) {
-      splitCounts["Unanimous"]++;
-    } else {
-      const key = `${maj}-${min}`;
-      if (key in splitCounts) {
-        splitCounts[key]++;
-      }
-    }
+    const key = min === 0 ? "Unanimous" : `${maj}-${min}`;
+    splitCounts[key] = (splitCounts[key] || 0) + 1;
   }
 
-  const splits: VoteSplitStats[] = Object.entries(splitCounts).map(
-    ([label, count]) => ({ label, count })
-  );
+  const splits: VoteSplitStats[] = Object.entries(splitCounts)
+    .sort(([a], [b]) => {
+      if (a === "Unanimous") return -1;
+      if (b === "Unanimous") return 1;
+      const aMin = parseInt(a.split("-")[1]) || 0;
+      const bMin = parseInt(b.split("-")[1]) || 0;
+      return aMin - bMin;
+    })
+    .map(([label, count]) => ({ label, count }));
 
   return { splits, totalCases: decidedCount };
 }
@@ -447,6 +445,126 @@ export async function searchCases(query: string): Promise<CaseSummary[]> {
   );
 
   return rows.map(rowToCaseSummary);
+}
+
+export interface JusticeAgreementCell {
+  justice1: string;
+  justice2: string;
+  agreed: number;
+  total: number;
+  rate: number;
+}
+
+export interface JusticeAgreementData {
+  justices: string[];
+  matrix: Record<string, Record<string, JusticeAgreementCell>>;
+  caseCount: number;
+}
+
+export async function fetchJusticeAgreement(
+  term: string
+): Promise<JusticeAgreementData> {
+  const { rows: rawRows } = await pool.query<{
+    decisions: {
+      votes: { member: { last_name: string }; vote: string }[];
+      majority_vote?: number;
+      minority_vote?: number;
+    }[] | null;
+  }>(
+    `SELECT decisions FROM cases WHERE term = $1`,
+    [term]
+  );
+
+  // Filter in JS — PostgreSQL can reorder AND conditions so
+  // jsonb_array_length may run before typeof guards, crashing on scalars
+  const rows = rawRows.filter((r) => {
+    const d = r.decisions;
+    if (!Array.isArray(d) || d.length === 0) return false;
+    const first = d[0];
+    if (!first || !Array.isArray(first.votes) || first.votes.length === 0) return false;
+    return true;
+  });
+
+  // Collect all justice votes per case, skip unanimous cases
+  const caseVotes: { justiceVotes: Record<string, string> }[] = [];
+
+  for (const row of rows) {
+    const dec = row.decisions?.[0];
+    if (!dec?.votes || dec.votes.length === 0) continue;
+    // Skip unanimous cases — alignment is only interesting in divided cases
+    const maj = dec.majority_vote ?? 0;
+    const min = dec.minority_vote ?? 0;
+    if (min === 0) continue;
+
+    const justiceVotes: Record<string, string> = {};
+    for (const v of dec.votes) {
+      const name = v.member?.last_name;
+      if (!name || !v.vote || v.vote === "none") continue;
+      justiceVotes[name] = v.vote;
+    }
+    if (Object.keys(justiceVotes).length >= 2) {
+      caseVotes.push({ justiceVotes });
+    }
+  }
+
+  // Compute pairwise agreement
+  const allJustices = new Set<string>();
+  for (const cv of caseVotes) {
+    for (const j of Object.keys(cv.justiceVotes)) {
+      allJustices.add(j);
+    }
+  }
+
+  const matrix: Record<string, Record<string, JusticeAgreementCell>> = {};
+  const justiceList = Array.from(allJustices);
+
+  for (const j1 of justiceList) {
+    matrix[j1] = {};
+    for (const j2 of justiceList) {
+      matrix[j1][j2] = { justice1: j1, justice2: j2, agreed: 0, total: 0, rate: 0 };
+    }
+  }
+
+  for (const cv of caseVotes) {
+    const participating = Object.keys(cv.justiceVotes);
+    for (let i = 0; i < participating.length; i++) {
+      for (let j = i + 1; j < participating.length; j++) {
+        const j1 = participating[i];
+        const j2 = participating[j];
+        const same = cv.justiceVotes[j1] === cv.justiceVotes[j2];
+        matrix[j1][j2].total++;
+        matrix[j2][j1].total++;
+        if (same) {
+          matrix[j1][j2].agreed++;
+          matrix[j2][j1].agreed++;
+        }
+      }
+    }
+  }
+
+  // Compute rates
+  for (const j1 of justiceList) {
+    for (const j2 of justiceList) {
+      if (j1 === j2) {
+        matrix[j1][j2].rate = 1;
+      } else if (matrix[j1][j2].total > 0) {
+        matrix[j1][j2].rate = matrix[j1][j2].agreed / matrix[j1][j2].total;
+      }
+    }
+  }
+
+  // Sort justices by average agreement (creates natural bloc clustering)
+  justiceList.sort((a, b) => {
+    const avgA =
+      justiceList.reduce((sum, j) => sum + (j !== a ? matrix[a][j].rate : 0), 0) /
+      (justiceList.length - 1);
+    const avgB =
+      justiceList.reduce((sum, j) => sum + (j !== b ? matrix[b][j].rate : 0), 0) /
+      (justiceList.length - 1);
+    return avgB - avgA;
+  });
+
+  return { justices: justiceList, matrix, caseCount: caseVotes.length };
 }
 
 export async function fetchAvailableTerms(): Promise<string[]> {

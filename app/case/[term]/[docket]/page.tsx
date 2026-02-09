@@ -187,6 +187,67 @@ export default async function CaseDetailPage({
           </section>
         )}
 
+        {/* Written Opinions */}
+        {caseData.written_opinion && caseData.written_opinion.length > 0 && (() => {
+          const opinions = caseData.written_opinion.filter(
+            (o) => o.type?.value !== "syllabus"
+          );
+          if (opinions.length === 0) return null;
+
+          const grouped: Record<string, typeof opinions> = {};
+          for (const o of opinions) {
+            const category = o.type?.label || o.title || "Opinion";
+            if (!grouped[category]) grouped[category] = [];
+            grouped[category].push(o);
+          }
+
+          // Order: majority first, then concurring, then dissenting
+          const order = ["Opinion of the Court", "Concurring opinion", "Concurrence in part", "Dissenting opinion", "Dissent in part"];
+          const sortedKeys = Object.keys(grouped).sort((a, b) => {
+            const ai = order.findIndex((o) => a.includes(o));
+            const bi = order.findIndex((o) => b.includes(o));
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+          });
+
+          return (
+            <section className="py-4 border-t border-divider">
+              <h3 className="font-mono text-xs text-fade tracking-widest uppercase mb-3">
+                Written Opinions
+              </h3>
+              <div className="space-y-3">
+                {sortedKeys.map((category) => (
+                  <div key={category}>
+                    <span className="font-mono text-xs text-fade tracking-wider">
+                      {category}
+                    </span>
+                    <div className="mt-1.5 space-y-1.5">
+                      {grouped[category].map((o) => (
+                        <div key={o.id} className="flex items-baseline gap-2">
+                          {o.judge_full_name && (
+                            <span className="font-serif text-sm text-ink">
+                              {o.judge_full_name}
+                            </span>
+                          )}
+                          {o.justia_opinion_url && (
+                            <a
+                              href={o.justia_opinion_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-mono text-xs text-citation tracking-wider underline underline-offset-2"
+                            >
+                              Read opinion
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
+
         {/* Facts of the Case */}
         {caseData.facts_of_the_case && (
           <section className="py-4 border-t border-divider">

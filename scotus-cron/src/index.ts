@@ -29,6 +29,7 @@ interface OyezCase {
   conclusion: string;
   advocates: unknown[];
   decisions: { majority_vote?: number; minority_vote?: number }[];
+  written_opinion: unknown[];
   timeline: { event: string; dates: number[] }[];
 }
 
@@ -99,8 +100,8 @@ async function updateTerm(pool: Pool, term: string): Promise<{ inserted: number;
         term, docket_number, name, first_party, second_party,
         description, facts_of_the_case, question, conclusion,
         decision_date, citation, justia_url, href,
-        decisions, advocates, timeline, is_decided, fetched_at, search_vector
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW(),
+        decisions, advocates, written_opinion, timeline, is_decided, fetched_at, search_vector
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),
         setweight(to_tsvector('english', coalesce($3, '')), 'A') ||
         setweight(to_tsvector('english', coalesce($4, '')), 'A') ||
         setweight(to_tsvector('english', coalesce($5, '')), 'A') ||
@@ -123,6 +124,7 @@ async function updateTerm(pool: Pool, term: string): Promise<{ inserted: number;
         href = EXCLUDED.href,
         decisions = EXCLUDED.decisions,
         advocates = EXCLUDED.advocates,
+        written_opinion = EXCLUDED.written_opinion,
         timeline = EXCLUDED.timeline,
         is_decided = EXCLUDED.is_decided,
         fetched_at = NOW(),
@@ -143,6 +145,7 @@ async function updateTerm(pool: Pool, term: string): Promise<{ inserted: number;
         detail.href,
         JSON.stringify(detail.decisions || []),
         JSON.stringify(detail.advocates || []),
+        JSON.stringify(detail.written_opinion || []),
         JSON.stringify(detail.timeline || []),
         decided,
       ]

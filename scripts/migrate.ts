@@ -34,6 +34,12 @@ async function migrate() {
 
   console.log("Cases table ready.");
 
+  // Add written_opinion column if it doesn't exist
+  await pool.query(`
+    ALTER TABLE cases ADD COLUMN IF NOT EXISTS written_opinion JSONB DEFAULT '[]';
+  `);
+  console.log("written_opinion column ready.");
+
   // Enable pg_trgm for fuzzy matching
   await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`);
   console.log("pg_trgm extension enabled.");
