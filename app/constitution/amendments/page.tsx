@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { fetchConstitutionArticles } from "../../lib/api";
 import TabBar from "../../components/TabBar";
