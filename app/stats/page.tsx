@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { fetchTermStats, fetchAvailableTerms, fetchJusticeAgreement } from "../lib/api";
+import { getCurrentTerm } from "../lib/utils";
 import TermSelector from "../components/TermSelector";
 import TabBar from "../components/TabBar";
 
@@ -10,7 +11,7 @@ export default async function StatsPage({
   searchParams: Promise<{ term?: string }>;
 }) {
   const params = await searchParams;
-  const currentTerm = params.term || "2023";
+  const currentTerm = params.term || getCurrentTerm();
   const [{ splits, totalCases }, terms, agreement] = await Promise.all([
     fetchTermStats(currentTerm),
     fetchAvailableTerms(),

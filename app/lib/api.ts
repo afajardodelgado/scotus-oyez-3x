@@ -1,4 +1,6 @@
 import { CaseSummary, OyezCase, OyezCaseListItem } from "./types";
+import { formatTimestamp, getCurrentTerm } from "./utils";
+import { upsertCase } from "@/shared/upsert";
 import pool from "./db";
 
 const OYEZ_BASE = "https://api.oyez.org";
@@ -6,15 +8,6 @@ const OYEZ_BASE = "https://api.oyez.org";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts * 1000);
-  return d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 function getDecisionDate(timeline: OyezCaseListItem["timeline"]): {
   formatted: string | null;
@@ -158,68 +151,11 @@ function rowToOyezCase(row: CaseRow): OyezCase {
 }
 
 // ---------------------------------------------------------------------------
-// Upsert a single case detail into the DB
-// ---------------------------------------------------------------------------
-
-async function upsertCase(detail: OyezCase): Promise<void> {
-  const decided =
-    detail.decisions?.[0]?.majority_vote !== undefined &&
-    detail.decisions?.[0]?.minority_vote !== undefined;
-
-  await pool.query(
-    `INSERT INTO cases (
-      term, docket_number, name, first_party, second_party,
-      description, facts_of_the_case, question, conclusion,
-      decision_date, citation, justia_url, href,
-      decisions, advocates, written_opinion, timeline, is_decided, fetched_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
-    ON CONFLICT (term, docket_number) DO UPDATE SET
-      name = EXCLUDED.name,
-      first_party = EXCLUDED.first_party,
-      second_party = EXCLUDED.second_party,
-      description = EXCLUDED.description,
-      facts_of_the_case = EXCLUDED.facts_of_the_case,
-      question = EXCLUDED.question,
-      conclusion = EXCLUDED.conclusion,
-      decision_date = EXCLUDED.decision_date,
-      citation = EXCLUDED.citation,
-      justia_url = EXCLUDED.justia_url,
-      href = EXCLUDED.href,
-      decisions = EXCLUDED.decisions,
-      advocates = EXCLUDED.advocates,
-      written_opinion = EXCLUDED.written_opinion,
-      timeline = EXCLUDED.timeline,
-      is_decided = EXCLUDED.is_decided,
-      fetched_at = NOW()`,
-    [
-      detail.term,
-      detail.docket_number,
-      detail.name,
-      detail.first_party || null,
-      detail.second_party || null,
-      detail.description || null,
-      detail.facts_of_the_case || null,
-      detail.question || null,
-      detail.conclusion || null,
-      detail.decision_date || null,
-      JSON.stringify(detail.citation || null),
-      detail.justia_url || null,
-      detail.href,
-      JSON.stringify(detail.decisions || []),
-      JSON.stringify(detail.advocates || []),
-      JSON.stringify(detail.written_opinion || []),
-      JSON.stringify(detail.timeline || []),
-      decided,
-    ]
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Public API functions — DB-first, API fallback
 // ---------------------------------------------------------------------------
 
 export async function fetchRecentCases(
-  term: string = "2023"
+  term: string = getCurrentTerm()
 ): Promise<CaseSummary[]> {
   // Try DB first
   const { rows } = await pool.query<CaseRow>(
@@ -306,7 +242,7 @@ export async function fetchCaseDetail(
 
   // Cache in DB
   try {
-    await upsertCase(data);
+    await upsertCase(pool, data);
   } catch (err) {
     console.error("Failed to cache case detail:", err);
   }

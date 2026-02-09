@@ -46,7 +46,7 @@ export default async function ConstitutionPage() {
               >
                 <div className="flex items-start gap-3">
                   <div className="shrink-0 pt-1.5">
-                    <div className="w-3.5 h-3.5 border border-[#4A5D23] bg-[#4A5D23]" />
+                    <div className="w-3.5 h-3.5 border border-success bg-success" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <h2 className="font-serif text-lg leading-snug text-ink italic">

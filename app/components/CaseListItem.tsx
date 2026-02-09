@@ -17,7 +17,7 @@ export default function CaseListItem({ case: c }: { case: CaseSummary }) {
           <div
             className={`w-3.5 h-3.5 border ${
               c.isDecided
-                ? "border-[#4A5D23] bg-[#4A5D23]"
+                ? "border-success bg-success"
                 : "border-fade/40 bg-transparent"
             }`}
           />

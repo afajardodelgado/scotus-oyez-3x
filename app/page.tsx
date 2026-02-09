@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { fetchRecentCases, fetchAvailableTerms } from "./lib/api";
+import { getCurrentTerm } from "./lib/utils";
 import CaseListItem from "./components/CaseListItem";
 import TabBar from "./components/TabBar";
 import TermSelector from "./components/TermSelector";
@@ -12,7 +13,7 @@ export default async function Home({
   searchParams: Promise<{ term?: string }>;
 }) {
   const params = await searchParams;
-  const currentTerm = params.term || "2023";
+  const currentTerm = params.term || getCurrentTerm();
   const [cases, terms] = await Promise.all([
     fetchRecentCases(currentTerm),
     fetchAvailableTerms(),

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
+import { useClickOutside } from "../hooks/useClickOutside";
 
 const pages = [
   { label: "Supreme Court Cases", href: "/" },
@@ -17,17 +18,7 @@ export default function HeaderMenu({ current }: { current: string }) {
   const currentPage = pages.find((p) => p.href === current) || pages[0];
   const otherPages = pages.filter((p) => p.href !== current);
 
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    }
-    if (open) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [open]);
+  useClickOutside(menuRef, open, useCallback(() => setOpen(false), []));
 
   return (
     <div ref={menuRef} className="relative">

@@ -1,19 +1,7 @@
 import Link from "next/link";
 import { fetchCaseDetail } from "../../../lib/api";
+import { formatTimestamp, stripHtml } from "../../../lib/utils";
 import TabBar from "../../../components/TabBar";
-
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts * 1000);
-  return d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
-}
 
 export default async function CaseDetailPage({
   params,

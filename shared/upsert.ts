@@ -11,8 +11,16 @@ export async function upsertCase(pool: Pool, detail: OyezCase): Promise<void> {
       term, docket_number, name, first_party, second_party,
       description, facts_of_the_case, question, conclusion,
       decision_date, citation, justia_url, href,
-      decisions, advocates, timeline, is_decided, fetched_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,NOW())
+      decisions, advocates, written_opinion, timeline, is_decided, fetched_at, search_vector
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW(),
+      setweight(to_tsvector('english', coalesce($3, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce($4, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce($5, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce($6, '')), 'B') ||
+      setweight(to_tsvector('english', coalesce($8, '')), 'B') ||
+      setweight(to_tsvector('english', coalesce($7, '')), 'C') ||
+      setweight(to_tsvector('english', coalesce($9, '')), 'C')
+    )
     ON CONFLICT (term, docket_number) DO UPDATE SET
       name = EXCLUDED.name,
       first_party = EXCLUDED.first_party,
@@ -27,9 +35,11 @@ export async function upsertCase(pool: Pool, detail: OyezCase): Promise<void> {
       href = EXCLUDED.href,
       decisions = EXCLUDED.decisions,
       advocates = EXCLUDED.advocates,
+      written_opinion = EXCLUDED.written_opinion,
       timeline = EXCLUDED.timeline,
       is_decided = EXCLUDED.is_decided,
-      fetched_at = NOW()`,
+      fetched_at = NOW(),
+      search_vector = EXCLUDED.search_vector`,
     [
       detail.term,
       detail.docket_number,
@@ -46,6 +56,7 @@ export async function upsertCase(pool: Pool, detail: OyezCase): Promise<void> {
       detail.href,
       JSON.stringify(detail.decisions || []),
       JSON.stringify(detail.advocates || []),
+      JSON.stringify(detail.written_opinion || []),
       JSON.stringify(detail.timeline || []),
       decided,
     ]

@@ -36,6 +36,7 @@ export interface OyezCase {
   conclusion: string;
   advocates: OyezAdvocate[];
   decisions: OyezDecision[];
+  written_opinion: OyezWrittenOpinion[];
   timeline: OyezTimeline[];
 }
 
@@ -67,6 +68,19 @@ export interface OyezVote {
   joining: { name: string; href: string }[];
 }
 
+export interface OyezWrittenOpinion {
+  id: number;
+  title: string;
+  type: {
+    value: string;
+    label: string;
+  };
+  justia_opinion_id: number | null;
+  justia_opinion_url: string | null;
+  judge_full_name: string | null;
+  judge_last_name: string | null;
+}
+
 export interface OyezTimeline {
   event: string;
   dates: number[];
@@ -83,6 +97,7 @@ export interface CaseSummary {
   decisionTimestamp: number | null;
   majorityVotes: number;
   minorityVotes: number;
+  isDecided: boolean;
   decisionType: string;
   description: string;
   href: string;
