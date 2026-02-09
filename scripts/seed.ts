@@ -142,7 +142,7 @@ async function seed() {
   });
 
   // Seed recent terms (adjust range as needed)
-  const terms = ["2024", "2023", "2022", "2021", "2020"];
+  const terms = ["2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015"];
 
   for (const term of terms) {
     await seedTerm(pool, term);

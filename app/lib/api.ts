@@ -20,8 +20,8 @@ function getDecisionDate(timeline: OyezCaseListItem["timeline"]): {
   formatted: string | null;
   timestamp: number | null;
 } {
-  if (!timeline) return { formatted: null, timestamp: null };
-  const decided = timeline.find((t) => t.event === "Decided");
+  if (!timeline || !Array.isArray(timeline)) return { formatted: null, timestamp: null };
+  const decided = timeline.find((t) => t && t.event === "Decided");
   if (decided && decided.dates && decided.dates.length > 0) {
     const ts = decided.dates[0];
     return { formatted: formatTimestamp(ts), timestamp: ts };
@@ -362,7 +362,7 @@ export async function fetchTermStats(
 export async function fetchAvailableTerms(): Promise<string[]> {
   const currentYear = new Date().getFullYear();
   const terms: string[] = [];
-  for (let y = currentYear; y >= currentYear - 5; y--) {
+  for (let y = currentYear; y >= 2015; y--) {
     terms.push(y.toString());
   }
   return terms;
