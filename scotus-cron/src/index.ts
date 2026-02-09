@@ -59,7 +59,7 @@ async function updateTerm(pool: Pool, term: string): Promise<{ inserted: number;
     return { inserted: 0, updated: 0, skipped: 0 };
   }
 
-  const cases: OyezCaseListItem[] = await listRes.json();
+  const cases = (await listRes.json()) as OyezCaseListItem[];
   console.log(`[${term}] Found ${cases.length} cases on Oyez`);
 
   let inserted = 0;
@@ -86,7 +86,7 @@ async function updateTerm(pool: Pool, term: string): Promise<{ inserted: number;
         console.warn(`[${term}] Skipping ${c.docket_number} — detail fetch failed (${detailRes.status})`);
         continue;
       }
-      detail = await detailRes.json();
+      detail = (await detailRes.json()) as OyezCase;
     } catch (err) {
       console.warn(`[${term}] Skipping ${c.docket_number} — fetch error:`, err);
       continue;
