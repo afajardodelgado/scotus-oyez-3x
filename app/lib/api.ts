@@ -420,6 +420,35 @@ export async function fetchTermStats(
   return { splits, totalCases: decidedCount };
 }
 
+export async function searchCases(query: string): Promise<CaseSummary[]> {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+
+  // Convert user query to tsquery — handle multi-word by joining with &
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const tsQuery = words.map((w) => w.replace(/[^a-zA-Z0-9]/g, "")).filter(Boolean).join(" & ");
+
+  if (!tsQuery) return [];
+
+  // Primary: full-text search with ranking
+  // Fallback: trigram similarity on case name for fuzzy/typo matches
+  const { rows } = await pool.query<CaseRow>(
+    `SELECT *, 
+      ts_rank(search_vector, to_tsquery('english', $1)) AS fts_rank,
+      similarity(name, $2) AS trgm_score
+    FROM cases
+    WHERE search_vector @@ to_tsquery('english', $1)
+       OR similarity(name, $2) > 0.15
+    ORDER BY
+      ts_rank(search_vector, to_tsquery('english', $1)) DESC,
+      similarity(name, $2) DESC
+    LIMIT 50`,
+    [tsQuery, trimmed]
+  );
+
+  return rows.map(rowToCaseSummary);
+}
+
 export async function fetchAvailableTerms(): Promise<string[]> {
   const currentYear = new Date().getFullYear();
   const terms: string[] = [];

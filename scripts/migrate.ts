@@ -32,7 +32,47 @@ async function migrate() {
     );
   `);
 
-  console.log("Migration complete — cases table created.");
+  console.log("Cases table ready.");
+
+  // Enable pg_trgm for fuzzy matching
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm;`);
+  console.log("pg_trgm extension enabled.");
+
+  // Add search_vector column if it doesn't exist
+  await pool.query(`
+    ALTER TABLE cases ADD COLUMN IF NOT EXISTS search_vector tsvector;
+  `);
+
+  // Create GIN index for fast full-text search
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_cases_search_vector
+    ON cases USING GIN (search_vector);
+  `);
+
+  // Create trigram index on name for fuzzy matching
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_cases_name_trgm
+    ON cases USING GIN (name gin_trgm_ops);
+  `);
+
+  console.log("Search indexes created.");
+
+  // Backfill search_vector for existing rows
+  await pool.query(`
+    UPDATE cases SET search_vector =
+      setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce(first_party, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce(second_party, '')), 'A') ||
+      setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
+      setweight(to_tsvector('english', coalesce(question, '')), 'B') ||
+      setweight(to_tsvector('english', coalesce(facts_of_the_case, '')), 'C') ||
+      setweight(to_tsvector('english', coalesce(conclusion, '')), 'C')
+    WHERE search_vector IS NULL;
+  `);
+
+  console.log("Backfilled search_vector for existing rows.");
+
+  console.log("Migration complete.");
   await pool.end();
 }
 
