@@ -38,6 +38,34 @@ function parseName(name: string): { first: string; second: string } {
 }
 
 // ---------------------------------------------------------------------------
+// Fallback: parse vote split from conclusion text when decisions is null
+// ---------------------------------------------------------------------------
+
+function parseVotesFromConclusion(
+  conclusion: string | null
+): { majority: number; minority: number } | null {
+  if (!conclusion) return null;
+  const text = conclusion.replace(/<[^>]+>/g, "");
+  const splitMatch = text.match(/(\d+)[\u2013-](\d+)\s+majority/);
+  if (splitMatch) {
+    return {
+      majority: parseInt(splitMatch[1], 10),
+      minority: parseInt(splitMatch[2], 10),
+    };
+  }
+  if (/\bunanimous(?:ly)?\b/i.test(text)) {
+    return { majority: 9, minority: 0 };
+  }
+  return null;
+}
+
+function isDecidedFromTimeline(
+  timeline: { event: string; dates: number[] }[] | null
+): boolean {
+  return timeline?.some((t) => t.event === "Decided") ?? false;
+}
+
+// ---------------------------------------------------------------------------
 // DB row → CaseSummary
 // ---------------------------------------------------------------------------
 
@@ -68,6 +96,20 @@ function rowToCaseSummary(row: CaseRow): CaseSummary {
   const decisions = row.decisions as { majority_vote?: number; minority_vote?: number; decision_type?: string }[];
   const dec = decisions?.[0];
 
+  let majorityVotes = dec?.majority_vote ?? 0;
+  let minorityVotes = dec?.minority_vote ?? 0;
+
+  // Fallback: parse vote split from conclusion when decisions is null/empty
+  if (majorityVotes === 0 && minorityVotes === 0) {
+    const parsed = parseVotesFromConclusion(row.conclusion);
+    if (parsed) {
+      majorityVotes = parsed.majority;
+      minorityVotes = parsed.minority;
+    }
+  }
+
+  const isDecided = row.is_decided || isDecidedFromTimeline(row.timeline);
+
   return {
     id: `${row.term}-${row.docket_number}`,
     name: row.name || "Unknown Case",
@@ -77,8 +119,9 @@ function rowToCaseSummary(row: CaseRow): CaseSummary {
     term: row.term,
     decisionDate: formatted,
     decisionTimestamp: timestamp,
-    majorityVotes: dec?.majority_vote ?? 0,
-    minorityVotes: dec?.minority_vote ?? 0,
+    majorityVotes,
+    minorityVotes,
+    isDecided,
     decisionType: dec?.decision_type ?? "",
     description: row.description || "",
     href: row.href,
@@ -206,6 +249,7 @@ export async function fetchRecentCases(
       decisionTimestamp: timestamp,
       majorityVotes: 0,
       minorityVotes: 0,
+      isDecided: !!formatted,
       decisionType: "",
       description: raw.description || "",
       href: raw.href || "",
@@ -270,8 +314,14 @@ export async function fetchTermStats(
   term: string
 ): Promise<{ splits: VoteSplitStats[]; totalCases: number }> {
   // Try DB first — single query instead of N+1 API calls
-  const { rows } = await pool.query<{ decisions: { majority_vote?: number; minority_vote?: number }[] }>(
-    `SELECT decisions FROM cases WHERE term = $1 AND is_decided = true`,
+  // Include cases that are timeline-decided but missing structured decisions data
+  const { rows } = await pool.query<{
+    decisions: { majority_vote?: number; minority_vote?: number }[];
+    conclusion: string | null;
+    timeline: { event: string; dates: number[] }[];
+    is_decided: boolean;
+  }>(
+    `SELECT decisions, conclusion, timeline, is_decided FROM cases WHERE term = $1`,
     [term]
   );
 
@@ -287,12 +337,23 @@ export async function fetchTermStats(
 
     for (const row of rows) {
       const dec = row.decisions?.[0];
-      if (!dec || dec.majority_vote === undefined || dec.minority_vote === undefined) continue;
+      let maj = dec?.majority_vote;
+      let min = dec?.minority_vote;
+
+      // Fallback: parse vote split from conclusion when decisions is null/empty
+      if (maj === undefined || min === undefined) {
+        if (!row.is_decided && !isDecidedFromTimeline(row.timeline)) continue;
+        const parsed = parseVotesFromConclusion(row.conclusion);
+        if (!parsed) continue;
+        maj = parsed.majority;
+        min = parsed.minority;
+      }
+
       decidedCount++;
-      if (dec.minority_vote === 0) {
+      if (min === 0) {
         splitCounts["Unanimous"]++;
       } else {
-        const key = `${dec.majority_vote}-${dec.minority_vote}`;
+        const key = `${maj}-${min}`;
         if (key in splitCounts) splitCounts[key]++;
       }
     }

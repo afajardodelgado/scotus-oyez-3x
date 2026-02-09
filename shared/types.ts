@@ -83,7 +83,6 @@ export interface CaseSummary {
   decisionTimestamp: number | null;
   majorityVotes: number;
   minorityVotes: number;
-  isDecided: boolean;
   decisionType: string;
   description: string;
   href: string;

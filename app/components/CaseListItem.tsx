@@ -13,10 +13,14 @@ export default function CaseListItem({ case: c }: { case: CaseSummary }) {
       className="block px-4 py-5 active:bg-ink/5 transition-colors"
     >
       <div className="flex items-start gap-3">
-        <div className="shrink-0 pt-1">
-          <span className="font-mono text-xs text-fade tracking-wider">
-            {c.term}
-          </span>
+        <div className="shrink-0 pt-1.5">
+          <div
+            className={`w-3.5 h-3.5 border ${
+              c.isDecided
+                ? "border-[#4A5D23] bg-[#4A5D23]"
+                : "border-fade/40 bg-transparent"
+            }`}
+          />
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="font-serif text-lg leading-snug text-ink italic">
