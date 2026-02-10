@@ -172,6 +172,97 @@ async function updateTerm(pool: Pool, term: string): Promise<{ inserted: number;
   return { inserted, updated, skipped };
 }
 
+// ---------------------------------------------------------------------------
+// Justice sync — fetch missing justice profiles from Oyez API
+// Duplicated here for the same Railway Docker context reason as types/upsert.
+// ---------------------------------------------------------------------------
+
+interface OyezJusticeResponse {
+  name: string;
+  last_name: string;
+  identifier: string;
+  home_state: string | null;
+  law_school: string | null;
+  roles: {
+    role_title: string;
+    appointing_president: string;
+    date_start: number;
+    date_end: number;
+  }[];
+  thumbnail: { href: string } | null;
+}
+
+async function syncJustices(pool: Pool, terms: string[]): Promise<number> {
+  console.log(`\n--- Syncing justices ---`);
+
+  // Get justice hrefs from case votes for the given terms
+  const placeholders = terms.map((_, i) => `$${i + 1}`).join(",");
+  const { rows } = await pool.query<{ decisions: unknown }>(
+    `SELECT DISTINCT decisions FROM cases
+     WHERE term IN (${placeholders}) AND decisions IS NOT NULL AND decisions != '[]'::jsonb`,
+    terms
+  );
+
+  const justiceHrefs = new Set<string>();
+  for (const row of rows) {
+    const decs = row.decisions as { votes?: { member?: { href?: string } }[] }[];
+    if (!Array.isArray(decs)) continue;
+    for (const dec of decs) {
+      if (!Array.isArray(dec.votes)) continue;
+      for (const v of dec.votes) {
+        if (v.member?.href) justiceHrefs.add(v.member.href);
+      }
+    }
+  }
+
+  // Check which justices we already have
+  const { rows: existing } = await pool.query<{ identifier: string }>(
+    `SELECT identifier FROM justices`
+  );
+  const existingIds = new Set(existing.map((r) => r.identifier));
+
+  let fetched = 0;
+  for (const href of justiceHrefs) {
+    const identifier = href.split("/people/")[1];
+    if (!identifier || existingIds.has(identifier)) continue;
+
+    try {
+      const res = await fetch(href);
+      if (!res.ok) continue;
+      const data = (await res.json()) as OyezJusticeResponse;
+
+      const scotusRole = data.roles?.find((r) =>
+        r.role_title?.includes("Justice") || r.role_title?.includes("Chief Justice")
+      );
+
+      await pool.query(
+        `INSERT INTO justices (identifier, name, last_name, role_title, appointing_president,
+          date_start, date_end, home_state, law_school, thumbnail_url, fetched_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+         ON CONFLICT (identifier) DO NOTHING`,
+        [
+          identifier,
+          data.name || identifier,
+          data.last_name || identifier,
+          scotusRole?.role_title || null,
+          scotusRole?.appointing_president || null,
+          scotusRole?.date_start || null,
+          scotusRole?.date_end ?? 0,
+          data.home_state || null,
+          data.law_school || null,
+          data.thumbnail?.href || null,
+        ]
+      );
+      fetched++;
+    } catch {
+      // skip silently
+    }
+  }
+
+  console.log(`Justices: ${fetched} new, ${justiceHrefs.size - fetched} already existed`);
+  return fetched;
+}
+
 async function main() {
   const startTime = Date.now();
   console.log(`=== SCOTUS Cron Job Started at ${new Date().toISOString()} ===\n`);
@@ -195,13 +286,16 @@ async function main() {
   const currResult = await updateTerm(pool, currentTerm);
   console.log(`[${currentTerm}] Done — inserted: ${currResult.inserted}, updated: ${currResult.updated}, skipped: ${currResult.skipped}\n`);
 
+  // Sync justices from vote data (lightweight — only fetches new justices)
+  await syncJustices(pool, [currentTerm, previousTerm]);
+
   // Summary
   const totalInserted = prevResult.inserted + currResult.inserted;
   const totalUpdated = prevResult.updated + currResult.updated;
   const totalSkipped = prevResult.skipped + currResult.skipped;
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
 
-  console.log(`=== Cron Job Complete ===`);
+  console.log(`\n=== Cron Job Complete ===`);
   console.log(`Total: ${totalInserted} new, ${totalUpdated} updated, ${totalSkipped} skipped (decided)`);
   console.log(`Duration: ${duration}s`);
 

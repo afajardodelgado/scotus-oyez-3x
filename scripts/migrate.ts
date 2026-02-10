@@ -92,6 +92,24 @@ async function migrate() {
 
   console.log("Backfilled search_vector for existing rows.");
 
+  // Justices table
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS justices (
+      identifier         TEXT PRIMARY KEY,
+      name               TEXT NOT NULL,
+      last_name          TEXT NOT NULL,
+      role_title         TEXT,
+      appointing_president TEXT,
+      date_start         BIGINT,
+      date_end           BIGINT DEFAULT 0,
+      home_state         TEXT,
+      law_school         TEXT,
+      thumbnail_url      TEXT,
+      fetched_at         TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  console.log("Justices table ready.");
+
   console.log("Migration complete.");
   await pool.end();
 }

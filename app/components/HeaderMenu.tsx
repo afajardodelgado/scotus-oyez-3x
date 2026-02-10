@@ -9,6 +9,7 @@ const pages = [
   { label: "The Constitution", href: "/constitution" },
   { label: "Constitutional Amendments", href: "/constitution/amendments" },
   { label: "Declaration of Independence", href: "/declaration" },
+  { label: "Supreme Court Justice Profiles", href: "/justices" },
 ];
 
 export default function HeaderMenu({ current }: { current: string }) {

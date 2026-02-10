@@ -86,6 +86,46 @@ export interface OyezTimeline {
   dates: number[];
 }
 
+export interface Justice {
+  identifier: string;
+  name: string;
+  lastName: string;
+  roleTitle: string;
+  appointingPresident: string;
+  dateStart: number;
+  dateEnd: number;
+  homeState: string;
+  lawSchool: string;
+  thumbnailUrl: string | null;
+  majorityCount: number;
+  dissentCount: number;
+  authoredCount: number;
+}
+
+export interface JusticeOpinion {
+  term: string;
+  docketNumber: string;
+  caseName: string;
+  opinionType: string;
+  description: string;
+}
+
+export interface JusticeAlignment {
+  justiceName: string;
+  agreed: number;
+  total: number;
+  rate: number;
+}
+
+export interface JusticeProfile {
+  justice: Justice;
+  opinions: JusticeOpinion[];
+  alignments: JusticeAlignment[];
+  dissents: JusticeOpinion[];
+}
+
+export type CaseStage = "granted" | "argued" | "decided";
+
 export interface CaseSummary {
   id: string;
   name: string;
@@ -101,4 +141,7 @@ export interface CaseSummary {
   decisionType: string;
   description: string;
   href: string;
+  stage: CaseStage;
+  grantedDate: string | null;
+  arguedDate: string | null;
 }

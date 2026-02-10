@@ -1,3 +1,5 @@
+import type { CaseStage } from "@/shared/types";
+
 export function formatTimestamp(ts: number): string {
   const d = new Date(ts * 1000);
   return d.toLocaleDateString("en-US", {
@@ -9,6 +11,25 @@ export function formatTimestamp(ts: number): string {
 
 export function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
+}
+
+export function getTimelineDate(
+  timeline: { event: string; dates: number[] }[] | null,
+  event: string,
+): string | null {
+  if (!timeline) return null;
+  const entry = timeline.find((t) => t.event === event);
+  if (!entry || !entry.dates || entry.dates.length === 0) return null;
+  return formatTimestamp(entry.dates[0]);
+}
+
+export function getCaseStage(
+  timeline: { event: string; dates: number[] }[] | null,
+  isDecided: boolean,
+): CaseStage {
+  if (isDecided || timeline?.some((t) => t.event === "Decided")) return "decided";
+  if (timeline?.some((t) => t.event === "Argued" || t.event === "Reargued")) return "argued";
+  return "granted";
 }
 
 /**

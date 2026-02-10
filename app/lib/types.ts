@@ -6,5 +6,10 @@ export type {
   OyezDecision,
   OyezVote,
   OyezTimeline,
+  CaseStage,
   CaseSummary,
+  Justice,
+  JusticeOpinion,
+  JusticeAlignment,
+  JusticeProfile,
 } from "@/shared/types";

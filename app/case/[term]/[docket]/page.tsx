@@ -2,6 +2,7 @@ import Link from "next/link";
 import { fetchCaseDetail } from "../../../lib/api";
 import { formatTimestamp, stripHtml } from "../../../lib/utils";
 import TabBar from "../../../components/TabBar";
+import CaseTimeline from "../../../components/CaseTimeline";
 
 export default async function CaseDetailPage({
   params,
@@ -68,6 +69,9 @@ export default async function CaseDetailPage({
             {caseData.first_party} v. {caseData.second_party}
           </h2>
         </section>
+
+        {/* Case Progress Timeline */}
+        <CaseTimeline timeline={caseData.timeline} />
 
         {/* Metadata Block */}
         <section className="py-4 border-t border-divider space-y-2">

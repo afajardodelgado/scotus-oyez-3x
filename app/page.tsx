@@ -3,6 +3,7 @@ import Link from "next/link";
 import { fetchRecentCases, fetchAvailableTerms } from "./lib/api";
 import { getCurrentTerm } from "./lib/utils";
 import CaseListItem from "./components/CaseListItem";
+import SwipeToBookmark from "./components/SwipeToBookmark";
 import TabBar from "./components/TabBar";
 import TermSelector from "./components/TermSelector";
 import HeaderMenu from "./components/HeaderMenu";
@@ -40,7 +41,7 @@ export default async function Home({
           </div>
         </div>
         <Suspense>
-          <TermSelector terms={terms} currentTerm={currentTerm} />
+          <TermSelector terms={terms} currentTerm={currentTerm} actualCurrentTerm={getCurrentTerm()} />
         </Suspense>
       </header>
 
@@ -55,7 +56,18 @@ export default async function Home({
         ) : (
           <div className="divide-y divide-divider">
             {cases.map((c) => (
-              <CaseListItem key={c.id} case={c} />
+              <SwipeToBookmark
+                key={c.id}
+                bookmark={{
+                  id: `case-${c.term}-${c.docketNumber}`,
+                  type: "case",
+                  title: `${c.firstParty} v. ${c.secondParty}`,
+                  subtitle: c.docketNumber,
+                  href: `/case/${c.term}/${c.docketNumber}`,
+                }}
+              >
+                <CaseListItem case={c} />
+              </SwipeToBookmark>
             ))}
           </div>
         )}

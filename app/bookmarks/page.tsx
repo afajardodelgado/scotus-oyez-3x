@@ -1,4 +1,5 @@
 import TabBar from "../components/TabBar";
+import BookmarksList from "./BookmarksList";
 
 export default function BookmarksPage() {
   return (
@@ -10,10 +11,8 @@ export default function BookmarksPage() {
           </div>
         </div>
       </header>
-      <main className="flex flex-col items-center justify-center py-20 px-4">
-        <p className="font-mono text-sm text-fade tracking-wider">
-          No bookmarks saved.
-        </p>
+      <main>
+        <BookmarksList />
       </main>
       <TabBar />
     </div>

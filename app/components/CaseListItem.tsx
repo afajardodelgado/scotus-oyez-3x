@@ -1,5 +1,39 @@
 import Link from "next/link";
-import { CaseSummary } from "../lib/types";
+import type { CaseSummary, CaseStage } from "../lib/types";
+
+const stageLabel: Record<CaseStage, string> = {
+  granted: "Granted",
+  argued: "Argued",
+  decided: "Decided",
+};
+
+function StageIndicator({ stage }: { stage: CaseStage }) {
+  const granted = stage === "granted" || stage === "argued" || stage === "decided";
+  const argued = stage === "argued" || stage === "decided";
+  const decided = stage === "decided";
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <div
+        className={`w-2.5 h-2.5 border ${
+          decided ? "border-success bg-success" : "border-fade/30 bg-transparent"
+        }`}
+      />
+      <div className="w-px h-1 bg-fade/20" />
+      <div
+        className={`w-2.5 h-2.5 border ${
+          argued ? "border-citation bg-citation" : "border-fade/30 bg-transparent"
+        }`}
+      />
+      <div className="w-px h-1 bg-fade/20" />
+      <div
+        className={`w-2.5 h-2.5 border ${
+          granted ? "border-fade/60 bg-fade/60" : "border-fade/30 bg-transparent"
+        }`}
+      />
+    </div>
+  );
+}
 
 export default function CaseListItem({ case: c }: { case: CaseSummary }) {
   const voteDisplay =
@@ -13,14 +47,8 @@ export default function CaseListItem({ case: c }: { case: CaseSummary }) {
       className="block px-4 py-5 active:bg-ink/5 transition-colors"
     >
       <div className="flex items-start gap-3">
-        <div className="shrink-0 pt-1.5">
-          <div
-            className={`w-3.5 h-3.5 border ${
-              c.isDecided
-                ? "border-success bg-success"
-                : "border-fade/40 bg-transparent"
-            }`}
-          />
+        <div className="shrink-0 pt-1">
+          <StageIndicator stage={c.stage} />
         </div>
         <div className="min-w-0 flex-1">
           <h2 className="font-serif text-lg leading-snug text-ink italic">
@@ -30,6 +58,15 @@ export default function CaseListItem({ case: c }: { case: CaseSummary }) {
             <span className="font-mono text-xs text-fade tracking-wider">
               {c.docketNumber}
             </span>
+            {c.stage !== "decided" && (
+              <span
+                className={`font-mono text-xs tracking-wider ${
+                  c.stage === "argued" ? "text-citation" : "text-fade"
+                }`}
+              >
+                {stageLabel[c.stage]}
+              </span>
+            )}
             {c.decisionDate && (
               <span className="font-mono text-xs text-fade tracking-wider">
                 {c.decisionDate}

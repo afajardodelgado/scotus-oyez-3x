@@ -1,5 +1,5 @@
-import { CaseSummary, OyezCase, OyezCaseListItem } from "./types";
-import { formatTimestamp, getCurrentTerm } from "./utils";
+import { CaseSummary, OyezCase, OyezCaseListItem, Justice, JusticeOpinion, JusticeAlignment, JusticeProfile } from "./types";
+import { formatTimestamp, getCurrentTerm, getCaseStage, getTimelineDate } from "./utils";
 import { upsertCase } from "@/shared/upsert";
 import pool from "./db";
 
@@ -124,6 +124,9 @@ function rowToCaseSummary(row: CaseRow): CaseSummary {
     decisionType: dec?.decision_type ?? "",
     description: row.description || "",
     href: row.href,
+    stage: getCaseStage(row.timeline, isDecided),
+    grantedDate: getTimelineDate(row.timeline, "Granted"),
+    arguedDate: getTimelineDate(row.timeline, "Argued") || getTimelineDate(row.timeline, "Reargued"),
   };
 }
 
@@ -158,9 +161,14 @@ export async function fetchRecentCases(
   term: string = getCurrentTerm()
 ): Promise<CaseSummary[]> {
   // Try DB first
+  // Sort by lifecycle stage: argued-but-undecided first, then granted, then decided
   const { rows } = await pool.query<CaseRow>(
     `SELECT * FROM cases WHERE term = $1 ORDER BY
-      CASE WHEN is_decided THEN 0 ELSE 1 END,
+      CASE
+        WHEN NOT is_decided AND timeline @> '[{"event":"Argued"}]' THEN 0
+        WHEN NOT is_decided THEN 1
+        ELSE 2
+      END,
       (timeline->0->'dates'->>0)::bigint DESC NULLS LAST`,
     [term]
   );
@@ -183,6 +191,7 @@ export async function fetchRecentCases(
   const cases = data.map((raw): CaseSummary => {
     const { formatted, timestamp } = getDecisionDate(raw.timeline);
     const { first, second } = parseName(raw.name);
+    const isDecided = !!formatted;
     return {
       id: `${raw.term}-${raw.docket_number}`,
       name: raw.name || "Unknown Case",
@@ -194,10 +203,13 @@ export async function fetchRecentCases(
       decisionTimestamp: timestamp,
       majorityVotes: 0,
       minorityVotes: 0,
-      isDecided: !!formatted,
+      isDecided,
       decisionType: "",
       description: raw.description || "",
       href: raw.href || "",
+      stage: getCaseStage(raw.timeline, isDecided),
+      grantedDate: getTimelineDate(raw.timeline, "Granted"),
+      arguedDate: getTimelineDate(raw.timeline, "Argued") || getTimelineDate(raw.timeline, "Reargued"),
     };
   });
 
@@ -544,8 +556,385 @@ export async function fetchConstitutionArticle(
 export async function fetchAvailableTerms(): Promise<string[]> {
   const currentYear = new Date().getFullYear();
   const terms: string[] = [];
-  for (let y = currentYear; y >= 2015; y--) {
+  for (let y = currentYear; y >= 1970; y--) {
     terms.push(y.toString());
   }
   return terms;
+}
+
+export async function fetchJusticeTerms(): Promise<string[]> {
+  const currentYear = new Date().getFullYear();
+  const terms: string[] = [];
+  for (let y = currentYear; y >= 1789; y--) {
+    terms.push(y.toString());
+  }
+  return terms;
+}
+
+// ---------------------------------------------------------------------------
+// Justice functions
+// ---------------------------------------------------------------------------
+
+interface JusticeRow {
+  identifier: string;
+  name: string;
+  last_name: string;
+  role_title: string | null;
+  appointing_president: string | null;
+  date_start: number | null;
+  date_end: number | null;
+  home_state: string | null;
+  law_school: string | null;
+  thumbnail_url: string | null;
+}
+
+interface CaseVoteRow {
+  term: string;
+  docket_number: string;
+  name: string;
+  description: string | null;
+  decisions: {
+    votes?: { member?: { last_name?: string; href?: string }; vote?: string; opinion_type?: string }[];
+    majority_vote?: number;
+    minority_vote?: number;
+  }[] | null;
+  written_opinion: {
+    type?: { value?: string; label?: string };
+    judge_last_name?: string | null;
+    title?: string;
+  }[] | null;
+}
+
+export async function fetchJustices(term: string): Promise<Justice[]> {
+  // SCOTUS terms run Oct of {term} through Sep of {term+1}
+  // Determine the unix timestamps for the term window
+  const termYear = parseInt(term);
+  const termStartDate = new Date(termYear, 9, 1); // Oct 1
+  const termEndDate = new Date(termYear + 1, 8, 30); // Sep 30
+  const termStartUnix = Math.floor(termStartDate.getTime() / 1000);
+  const termEndUnix = Math.floor(termEndDate.getTime() / 1000);
+
+  // Get all justices who served during this term based on their appointment dates
+  // A justice served in this term if:
+  //   date_start <= termEnd AND (date_end >= termStart OR date_end = 0 [still serving])
+  const { rows: justiceRows } = await pool.query<JusticeRow>(
+    `SELECT * FROM justices
+     WHERE date_start <= $1
+       AND (date_end >= $2 OR date_end = 0)
+     ORDER BY date_start`,
+    [termEndUnix, termStartUnix]
+  );
+
+  if (justiceRows.length === 0) return [];
+
+  // Build per-justice stats from vote data (if case data exists for this term)
+  const justiceStats = new Map<string, { majority: number; dissent: number; authored: number }>();
+
+  const { rows: caseRows } = await pool.query<CaseVoteRow>(
+    `SELECT term, docket_number, name, description, decisions, written_opinion
+     FROM cases WHERE term = $1`,
+    [term]
+  );
+
+  for (const c of caseRows) {
+    const decs = c.decisions;
+    if (!Array.isArray(decs) || decs.length === 0) continue;
+    const dec = decs[0];
+    if (!Array.isArray(dec.votes)) continue;
+
+    for (const v of dec.votes) {
+      const lastName = v.member?.last_name;
+      if (!lastName || !v.vote || v.vote === "none") continue;
+
+      if (!justiceStats.has(lastName)) {
+        justiceStats.set(lastName, { majority: 0, dissent: 0, authored: 0 });
+      }
+      const stats = justiceStats.get(lastName)!;
+      if (v.vote === "majority") stats.majority++;
+      else if (v.vote === "minority") stats.dissent++;
+    }
+
+    // Count authored opinions
+    if (Array.isArray(c.written_opinion)) {
+      for (const wo of c.written_opinion) {
+        if (wo.type?.value === "syllabus") continue;
+        const authorName = wo.judge_last_name;
+        if (!authorName) continue;
+        if (!justiceStats.has(authorName)) {
+          justiceStats.set(authorName, { majority: 0, dissent: 0, authored: 0 });
+        }
+        justiceStats.get(authorName)!.authored++;
+      }
+    }
+  }
+
+  // Build result: merge bio data with stats
+  const justices: Justice[] = justiceRows.map((j) => {
+    const stats = justiceStats.get(j.last_name) || { majority: 0, dissent: 0, authored: 0 };
+    return {
+      identifier: j.identifier,
+      name: j.name,
+      lastName: j.last_name,
+      roleTitle: j.role_title || "Associate Justice",
+      appointingPresident: j.appointing_president || "",
+      dateStart: j.date_start || 0,
+      dateEnd: j.date_end || 0,
+      homeState: j.home_state || "",
+      lawSchool: j.law_school || "",
+      thumbnailUrl: j.thumbnail_url,
+      majorityCount: stats.majority,
+      dissentCount: stats.dissent,
+      authoredCount: stats.authored,
+    };
+  });
+
+  // Sort: Chief Justice first, then by seniority (date_start ascending)
+  justices.sort((a, b) => {
+    const aChief = a.roleTitle.includes("Chief") ? 0 : 1;
+    const bChief = b.roleTitle.includes("Chief") ? 0 : 1;
+    if (aChief !== bChief) return aChief - bChief;
+    return (a.dateStart || 0) - (b.dateStart || 0);
+  });
+
+  return justices;
+}
+
+export async function fetchJusticeProfile(
+  identifier: string,
+  term: string | "lifetime"
+): Promise<JusticeProfile | null> {
+  // Get justice bio
+  const { rows: jRows } = await pool.query<JusticeRow>(
+    `SELECT * FROM justices WHERE identifier = $1`,
+    [identifier]
+  );
+  if (jRows.length === 0) return null;
+  const j = jRows[0];
+
+  // Get case data — all terms or specific term
+  const termFilter = term === "lifetime" ? "" : " AND term = $1";
+  const params = term === "lifetime" ? [] : [term];
+
+  const { rows: caseRows } = await pool.query<CaseVoteRow>(
+    `SELECT term, docket_number, name, description, decisions, written_opinion
+     FROM cases WHERE decisions IS NOT NULL AND decisions != '[]'::jsonb${termFilter}`,
+    params
+  );
+
+  let majorityCount = 0;
+  let dissentCount = 0;
+  let authoredCount = 0;
+  const opinions: JusticeOpinion[] = [];
+  const dissents: JusticeOpinion[] = [];
+
+  // For alignment computation
+  const caseVotes: { justiceVotes: Record<string, string> }[] = [];
+
+  for (const c of caseRows) {
+    const decs = c.decisions;
+    if (!Array.isArray(decs) || decs.length === 0) continue;
+    const dec = decs[0];
+    if (!Array.isArray(dec.votes)) continue;
+
+    // Find this justice's vote
+    const myVote = dec.votes.find((v) => {
+      const memberHref = v.member?.href || "";
+      return memberHref.includes(identifier) || v.member?.last_name === j.last_name;
+    });
+
+    if (!myVote) continue;
+
+    if (myVote.vote === "majority") {
+      majorityCount++;
+    } else if (myVote.vote === "minority") {
+      dissentCount++;
+      dissents.push({
+        term: c.term,
+        docketNumber: c.docket_number,
+        caseName: c.name,
+        opinionType: "Dissent",
+        description: c.description || "",
+      });
+    }
+
+    // Collect votes for alignment computation (non-unanimous only)
+    const maj = dec.majority_vote ?? 0;
+    const min = dec.minority_vote ?? 0;
+    if (min > 0) {
+      const justiceVotes: Record<string, string> = {};
+      for (const v of dec.votes) {
+        const name = v.member?.last_name;
+        if (name && v.vote && v.vote !== "none") {
+          justiceVotes[name] = v.vote;
+        }
+      }
+      if (Object.keys(justiceVotes).length >= 2) {
+        caseVotes.push({ justiceVotes });
+      }
+    }
+
+    // Check authored opinions
+    if (Array.isArray(c.written_opinion)) {
+      for (const wo of c.written_opinion) {
+        if (wo.type?.value === "syllabus") continue;
+        if (wo.judge_last_name === j.last_name) {
+          authoredCount++;
+          opinions.push({
+            term: c.term,
+            docketNumber: c.docket_number,
+            caseName: c.name,
+            opinionType: wo.type?.label || wo.title || "Opinion",
+            description: c.description || "",
+          });
+        }
+      }
+    }
+  }
+
+  // Compute alignment with other justices
+  const pairCounts = new Map<string, { agreed: number; total: number }>();
+
+  for (const cv of caseVotes) {
+    const myVote = cv.justiceVotes[j.last_name];
+    if (!myVote) continue;
+
+    for (const [otherName, otherVote] of Object.entries(cv.justiceVotes)) {
+      if (otherName === j.last_name) continue;
+      if (!pairCounts.has(otherName)) {
+        pairCounts.set(otherName, { agreed: 0, total: 0 });
+      }
+      const pair = pairCounts.get(otherName)!;
+      pair.total++;
+      if (myVote === otherVote) pair.agreed++;
+    }
+  }
+
+  const alignments: JusticeAlignment[] = Array.from(pairCounts.entries())
+    .map(([name, { agreed, total }]) => ({
+      justiceName: name,
+      agreed,
+      total,
+      rate: total > 0 ? agreed / total : 0,
+    }))
+    .sort((a, b) => b.rate - a.rate);
+
+  const justice: Justice = {
+    identifier: j.identifier,
+    name: j.name,
+    lastName: j.last_name,
+    roleTitle: j.role_title || "Associate Justice",
+    appointingPresident: j.appointing_president || "",
+    dateStart: j.date_start || 0,
+    dateEnd: j.date_end || 0,
+    homeState: j.home_state || "",
+    lawSchool: j.law_school || "",
+    thumbnailUrl: j.thumbnail_url,
+    majorityCount,
+    dissentCount,
+    authoredCount,
+  };
+
+  return { justice, opinions, alignments, dissents };
+}
+
+// ---------------------------------------------------------------------------
+// Search functions
+// ---------------------------------------------------------------------------
+
+export interface JusticeSearchResult {
+  identifier: string;
+  name: string;
+  lastName: string;
+  roleTitle: string;
+  appointingPresident: string;
+  thumbnailUrl: string | null;
+}
+
+export async function searchJustices(query: string): Promise<JusticeSearchResult[]> {
+  if (!query.trim()) return [];
+  const pattern = `%${query.trim()}%`;
+  const { rows } = await pool.query<JusticeRow>(
+    `SELECT * FROM justices
+     WHERE name ILIKE $1
+        OR last_name ILIKE $1
+        OR appointing_president ILIKE $1
+        OR home_state ILIKE $1
+        OR law_school ILIKE $1
+        OR role_title ILIKE $1
+     ORDER BY date_start DESC
+     LIMIT 30`,
+    [pattern]
+  );
+  return rows.map((j) => ({
+    identifier: j.identifier,
+    name: j.name,
+    lastName: j.last_name,
+    roleTitle: j.role_title || "Associate Justice",
+    appointingPresident: j.appointing_president || "",
+    thumbnailUrl: j.thumbnail_url,
+  }));
+}
+
+export interface ConstitutionSearchResult {
+  article: string;
+  title: string;
+  section: string;
+  snippet: string;
+  href: string;
+}
+
+export async function searchConstitution(query: string): Promise<ConstitutionSearchResult[]> {
+  if (!query.trim()) return [];
+  const pattern = `%${query.trim()}%`;
+
+  let rows: { article: string; article_title: string; section: string; section_title: string; content: string }[];
+  try {
+    const result = await pool.query<{
+      article: string;
+      article_title: string;
+      section: string;
+      section_title: string;
+      content: string;
+    }>(
+      `SELECT article, article_title, section, section_title, content
+       FROM constitution
+       WHERE content ILIKE $1
+          OR article_title ILIKE $1
+          OR section_title ILIKE $1
+       ORDER BY article, section
+       LIMIT 30`,
+      [pattern]
+    );
+    rows = result.rows;
+  } catch {
+    return [];
+  }
+
+  return rows.map((r) => {
+    const isAmendment = r.article.startsWith("Amdt.");
+    const displayTitle = isAmendment
+      ? `Amendment ${r.article.replace("Amdt. ", "")}`
+      : r.article === "Preamble"
+        ? "Preamble"
+        : `Article ${r.article}`;
+
+    const lower = r.content.toLowerCase();
+    const idx = lower.indexOf(query.trim().toLowerCase());
+    let snippet = "";
+    if (idx >= 0) {
+      const start = Math.max(0, idx - 60);
+      const end = Math.min(r.content.length, idx + query.length + 60);
+      snippet = (start > 0 ? "..." : "") + r.content.slice(start, end) + (end < r.content.length ? "..." : "");
+    } else {
+      snippet = r.content.slice(0, 120) + (r.content.length > 120 ? "..." : "");
+    }
+
+    return {
+      article: r.article,
+      title: displayTitle,
+      section: r.section_title || r.section,
+      snippet,
+      href: `/constitution/${encodeURIComponent(r.article)}`,
+    };
+  });
 }

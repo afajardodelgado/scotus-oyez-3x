@@ -4,14 +4,23 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useRef, useCallback } from "react";
 import { useClickOutside } from "../hooks/useClickOutside";
 
+function formatTermLabel(term: string, actualCurrentTerm?: string, withSuffix = true): string {
+  if (actualCurrentTerm && term === actualCurrentTerm) {
+    return `Current Term (${term})`;
+  }
+  return withSuffix ? `${term} Term` : term;
+}
+
 export default function TermSelector({
   terms,
   currentTerm,
   baseUrl = "/",
+  actualCurrentTerm,
 }: {
   terms: string[];
   currentTerm: string;
   baseUrl?: string;
+  actualCurrentTerm?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -35,7 +44,7 @@ export default function TermSelector({
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 active:opacity-70 transition-opacity"
       >
-        <span className="font-serif text-lg text-ink">{currentTerm} Term</span>
+        <span className="font-serif text-lg text-ink">{formatTermLabel(currentTerm, actualCurrentTerm)}</span>
         <svg
           width="12"
           height="12"
@@ -59,7 +68,7 @@ export default function TermSelector({
               onClick={() => handleTermChange(term)}
               className="block w-full text-left px-4 py-2.5 font-serif text-lg text-ink active:bg-ink active:text-canvas transition-colors"
             >
-              {term}
+              {formatTermLabel(term, actualCurrentTerm, false)}
             </button>
           ))}
         </div>
