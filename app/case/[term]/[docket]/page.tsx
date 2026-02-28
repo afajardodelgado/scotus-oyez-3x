@@ -4,6 +4,7 @@ import { formatTimestamp, stripHtml } from "../../../lib/utils";
 import TabBar from "../../../components/TabBar";
 import CaseTimeline from "../../../components/CaseTimeline";
 import RelatedCases from "../../../components/RelatedCases";
+import type { OyezWrittenOpinion } from "@/shared/types";
 
 export default async function CaseDetailPage({
   params,
@@ -218,7 +219,7 @@ export default async function CaseDetailPage({
                       {category}
                     </span>
                     <div className="mt-1.5 space-y-1.5">
-                      {grouped[category].map((o) => (
+                      {grouped[category].map((o: OyezWrittenOpinion) => (
                         <div key={o.id} className="flex items-baseline gap-2">
                           {o.judge_full_name && (
                             <span className="font-serif text-sm text-ink">
@@ -226,13 +227,21 @@ export default async function CaseDetailPage({
                             </span>
                           )}
                           {o.justia_opinion_url && (
+                            <Link
+                              href={`/opinion/${term}/${docket}/${o.id}`}
+                              className="font-mono text-xs text-citation tracking-wider underline underline-offset-2"
+                            >
+                              Read opinion
+                            </Link>
+                          )}
+                          {o.justia_opinion_url && (
                             <a
                               href={o.justia_opinion_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="font-mono text-xs text-citation tracking-wider underline underline-offset-2"
+                              className="font-mono text-xs text-fade tracking-wider"
                             >
-                              Read opinion
+                              Justia &nearr;
                             </a>
                           )}
                         </div>

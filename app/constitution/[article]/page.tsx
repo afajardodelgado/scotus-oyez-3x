@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { fetchConstitutionArticle } from "../../lib/api";
 import TabBar from "../../components/TabBar";
+import ConstitutionContent from "./ConstitutionContent";
 
 export default async function ConstitutionArticlePage({
   params,
@@ -64,19 +65,7 @@ export default async function ConstitutionArticlePage({
           </p>
         </section>
 
-        {sections.map((s) => (
-          <section key={s.id} className="py-4 border-t border-divider">
-            {s.section_number && (
-              <h3 className="font-mono text-xs text-fade tracking-widest uppercase mb-3">
-                Section {s.section_number}
-                {s.section_title && ` — ${s.section_title}`}
-              </h3>
-            )}
-            <div className="font-serif text-base text-ink leading-[1.7] whitespace-pre-line">
-              {s.text}
-            </div>
-          </section>
-        ))}
+        <ConstitutionContent sections={sections} article={decoded} />
       </main>
 
       <TabBar />

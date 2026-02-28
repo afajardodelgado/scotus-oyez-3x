@@ -44,7 +44,7 @@ export default function TabBar() {
         {tabs.map((tab) => {
           const isActive =
             tab.href === "/"
-              ? pathname === "/" || pathname.startsWith("/case") || pathname.startsWith("/stats")
+              ? pathname === "/" || pathname.startsWith("/case") || pathname.startsWith("/stats") || pathname.startsWith("/opinion")
               : pathname.startsWith(tab.href);
           const Icon = tab.icon;
 
