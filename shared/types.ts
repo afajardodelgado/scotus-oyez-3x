@@ -124,6 +124,11 @@ export interface JusticeProfile {
   dissents: JusticeOpinion[];
 }
 
+export interface RelatedCaseSummary {
+  case: CaseSummary;
+  reason: string;
+}
+
 export type CaseStage = "granted" | "argued" | "decided";
 
 export interface CaseSummary {
@@ -143,5 +148,7 @@ export interface CaseSummary {
   href: string;
   stage: CaseStage;
   grantedDate: string | null;
+  grantedTimestamp: number | null;
   arguedDate: string | null;
+  arguedTimestamp: number | null;
 }

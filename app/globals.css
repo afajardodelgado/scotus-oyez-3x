@@ -52,3 +52,7 @@ input, select, textarea {
 ::-webkit-scrollbar-thumb {
   background: var(--color-fade);
 }
+
+/* Hide scrollbar for horizontal chip scroll */
+.scrollbar-none::-webkit-scrollbar { display: none; }
+.scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }

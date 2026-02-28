@@ -8,6 +8,7 @@ export type {
   OyezTimeline,
   CaseStage,
   CaseSummary,
+  RelatedCaseSummary,
   Justice,
   JusticeOpinion,
   JusticeAlignment,

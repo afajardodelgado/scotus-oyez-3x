@@ -2,8 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { fetchRecentCases, fetchAvailableTerms } from "./lib/api";
 import { getCurrentTerm } from "./lib/utils";
-import CaseListItem from "./components/CaseListItem";
-import SwipeToBookmark from "./components/SwipeToBookmark";
+import FilteredCaseList from "./components/FilteredCaseList";
 import TabBar from "./components/TabBar";
 import TermSelector from "./components/TermSelector";
 import HeaderMenu from "./components/HeaderMenu";
@@ -54,22 +53,7 @@ export default async function Home({
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-divider">
-            {cases.map((c) => (
-              <SwipeToBookmark
-                key={c.id}
-                bookmark={{
-                  id: `case-${c.term}-${c.docketNumber}`,
-                  type: "case",
-                  title: `${c.firstParty} v. ${c.secondParty}`,
-                  subtitle: c.docketNumber,
-                  href: `/case/${c.term}/${c.docketNumber}`,
-                }}
-              >
-                <CaseListItem case={c} />
-              </SwipeToBookmark>
-            ))}
-          </div>
+          <FilteredCaseList cases={cases} />
         )}
       </main>
 

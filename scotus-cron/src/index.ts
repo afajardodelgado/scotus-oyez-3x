@@ -46,8 +46,9 @@ interface OyezCase {
 
 async function upsertCase(pool: Pool, detail: OyezCase): Promise<void> {
   const decided =
-    detail.decisions?.[0]?.majority_vote !== undefined &&
-    detail.decisions?.[0]?.minority_vote !== undefined;
+    (detail.decisions?.[0]?.majority_vote !== undefined &&
+     detail.decisions?.[0]?.minority_vote !== undefined) ||
+    detail.timeline?.some((t: { event: string }) => t.event === "Decided") === true;
 
   await pool.query(
     `INSERT INTO cases (

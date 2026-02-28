@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { fetchCaseDetail } from "../../../lib/api";
+import { fetchCaseDetail, fetchRelatedCases } from "../../../lib/api";
 import { formatTimestamp, stripHtml } from "../../../lib/utils";
 import TabBar from "../../../components/TabBar";
 import CaseTimeline from "../../../components/CaseTimeline";
+import RelatedCases from "../../../components/RelatedCases";
 
 export default async function CaseDetailPage({
   params,
@@ -28,6 +29,10 @@ export default async function CaseDetailPage({
       </div>
     );
   }
+
+  const relatedCases = caseData.decisions?.length
+    ? await fetchRelatedCases(term, docket, caseData)
+    : [];
 
   const decision = caseData.decisions?.[0];
   const voteDisplay =
@@ -312,6 +317,8 @@ export default async function CaseDetailPage({
             </a>
           </section>
         )}
+
+        <RelatedCases cases={relatedCases} />
       </main>
 
       <TabBar />

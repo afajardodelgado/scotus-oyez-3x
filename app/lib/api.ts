@@ -1,5 +1,5 @@
-import { CaseSummary, OyezCase, OyezCaseListItem, Justice, JusticeOpinion, JusticeAlignment, JusticeProfile } from "./types";
-import { formatTimestamp, getCurrentTerm, getCaseStage, getTimelineDate } from "./utils";
+import { CaseSummary, RelatedCaseSummary, OyezCase, OyezCaseListItem, Justice, JusticeOpinion, JusticeAlignment, JusticeProfile } from "./types";
+import { formatTimestamp, getCurrentTerm, getCaseStage, getTimelineDate, getTimelineTimestamp } from "./utils";
 import { upsertCase } from "@/shared/upsert";
 import pool from "./db";
 
@@ -126,7 +126,9 @@ function rowToCaseSummary(row: CaseRow): CaseSummary {
     href: row.href,
     stage: getCaseStage(row.timeline, isDecided),
     grantedDate: getTimelineDate(row.timeline, "Granted"),
+    grantedTimestamp: getTimelineTimestamp(row.timeline, "Granted"),
     arguedDate: getTimelineDate(row.timeline, "Argued") || getTimelineDate(row.timeline, "Reargued"),
+    arguedTimestamp: getTimelineTimestamp(row.timeline, "Argued") ?? getTimelineTimestamp(row.timeline, "Reargued"),
   };
 }
 
@@ -209,7 +211,9 @@ export async function fetchRecentCases(
       href: raw.href || "",
       stage: getCaseStage(raw.timeline, isDecided),
       grantedDate: getTimelineDate(raw.timeline, "Granted"),
+      grantedTimestamp: getTimelineTimestamp(raw.timeline, "Granted"),
       arguedDate: getTimelineDate(raw.timeline, "Argued") || getTimelineDate(raw.timeline, "Reargued"),
+      arguedTimestamp: getTimelineTimestamp(raw.timeline, "Argued") ?? getTimelineTimestamp(raw.timeline, "Reargued"),
     };
   });
 
@@ -835,6 +839,202 @@ export async function fetchJusticeProfile(
   };
 
   return { justice, opinions, alignments, dissents };
+}
+
+// ---------------------------------------------------------------------------
+// Related cases
+// ---------------------------------------------------------------------------
+
+export async function fetchRelatedCases(
+  term: string,
+  docket: string,
+  caseData: OyezCase
+): Promise<RelatedCaseSummary[]> {
+  // Return early if no decisions data (undecided case)
+  if (!caseData.decisions || caseData.decisions.length === 0) return [];
+
+  const decision = caseData.decisions[0];
+  const majorityVote = decision.majority_vote;
+  const minorityVote = decision.minority_vote;
+
+  // Extract majority author from written_opinion
+  const majorityOpinion = caseData.written_opinion?.find(
+    (o) => o.type?.value === "majority"
+  );
+  const majorityAuthor = majorityOpinion?.judge_last_name || null;
+
+  // Extract dissenting justices (sorted for set comparison)
+  const dissentingJustices = (decision.votes || [])
+    .filter((v) => v.vote === "minority")
+    .map((v) => v.member.last_name)
+    .sort();
+
+  // Single query: all decided cases in this term except current
+  const { rows } = await pool.query<CaseRow>(
+    `SELECT * FROM cases
+     WHERE term = $1
+       AND docket_number != $2
+       AND is_decided = true
+       AND decisions IS NOT NULL
+       AND decisions != '[]'::jsonb`,
+    [term, docket]
+  );
+
+  const voteSplitMatches: RelatedCaseSummary[] = [];
+  const authorMatches: RelatedCaseSummary[] = [];
+  const dissentBlocMatches: RelatedCaseSummary[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const decs = row.decisions as OyezCase["decisions"];
+    if (!Array.isArray(decs) || decs.length === 0) continue;
+    const dec = decs[0];
+    if (!Array.isArray(dec.votes)) continue;
+
+    const rowDocket = row.docket_number;
+    const summary = rowToCaseSummary(row);
+
+    // 1. Same vote split (skip unanimous — not interesting)
+    if (
+      minorityVote && minorityVote > 0 &&
+      dec.majority_vote === majorityVote &&
+      dec.minority_vote === minorityVote &&
+      !seen.has(rowDocket)
+    ) {
+      voteSplitMatches.push({
+        case: summary,
+        reason: `Same ${majorityVote}-${minorityVote} split`,
+      });
+      seen.add(rowDocket);
+    }
+
+    // 2. Same majority author
+    if (majorityAuthor) {
+      const rowWrittenOpinions = row.written_opinion as OyezCase["written_opinion"];
+      const rowMajority = Array.isArray(rowWrittenOpinions)
+        ? rowWrittenOpinions.find((o) => o.type?.value === "majority")
+        : null;
+      if (
+        rowMajority?.judge_last_name === majorityAuthor &&
+        !seen.has(rowDocket)
+      ) {
+        authorMatches.push({
+          case: summary,
+          reason: `${majorityAuthor} authored`,
+        });
+        seen.add(rowDocket);
+      }
+    }
+
+    // 3. Same dissenting bloc (need at least 1 dissenter)
+    if (dissentingJustices.length > 0) {
+      const rowDissenters = dec.votes
+        .filter((v) => v.vote === "minority")
+        .map((v) => v.member.last_name)
+        .sort();
+      if (
+        rowDissenters.length === dissentingJustices.length &&
+        rowDissenters.every((d, i) => d === dissentingJustices[i]) &&
+        !seen.has(rowDocket)
+      ) {
+        dissentBlocMatches.push({
+          case: summary,
+          reason: "Same dissenting bloc",
+        });
+        seen.add(rowDocket);
+      }
+    }
+  }
+
+  // Round-robin across 3 types for diversity, max 6 results
+  const result: RelatedCaseSummary[] = [];
+  const buckets = [voteSplitMatches, authorMatches, dissentBlocMatches];
+  let idx = 0;
+
+  while (result.length < 6) {
+    let added = false;
+    for (const bucket of buckets) {
+      if (idx < bucket.length && result.length < 6) {
+        result.push(bucket[idx]);
+        added = true;
+      }
+    }
+    if (!added) break;
+    idx++;
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Stats drilldown — case lists by vote split or justice pair
+// ---------------------------------------------------------------------------
+
+export async function fetchCasesByVoteSplit(
+  term: string,
+  split: string
+): Promise<CaseSummary[]> {
+  // Fetch ALL cases for the term — same as fetchTermStats — then filter in JS
+  // This ensures the drilldown count matches the bar chart count exactly
+  const { rows } = await pool.query<CaseRow>(
+    `SELECT * FROM cases WHERE term = $1`,
+    [term]
+  );
+
+  const isUnanimous = split === "Unanimous";
+
+  return rows
+    .filter((row) => {
+      const decisions = row.decisions as { majority_vote?: number; minority_vote?: number }[];
+      const dec = decisions?.[0];
+      let maj = dec?.majority_vote;
+      let min = dec?.minority_vote;
+
+      // Fallback: same logic as fetchTermStats — check timeline + parse conclusion
+      if (maj === undefined || min === undefined) {
+        if (!row.is_decided && !isDecidedFromTimeline(row.timeline)) return false;
+        const parsed = parseVotesFromConclusion(row.conclusion);
+        if (!parsed) return false;
+        maj = parsed.majority;
+        min = parsed.minority;
+      }
+
+      if (isUnanimous) return min === 0;
+      return `${maj}-${min}` === split;
+    })
+    .map(rowToCaseSummary);
+}
+
+export async function fetchCasesByJusticePair(
+  term: string,
+  j1: string,
+  j2: string,
+  mode: "agreed" | "disagreed"
+): Promise<CaseSummary[]> {
+  const { rows } = await pool.query<CaseRow>(
+    `SELECT * FROM cases WHERE term = $1 AND is_decided = true AND decisions IS NOT NULL AND decisions != '[]'::jsonb`,
+    [term]
+  );
+
+  return rows
+    .filter((row) => {
+      const decisions = row.decisions as {
+        votes?: { member: { last_name: string }; vote: string }[];
+        minority_vote?: number;
+      }[];
+      const dec = decisions?.[0];
+      if (!Array.isArray(dec?.votes)) return false;
+      // Skip unanimous
+      if ((dec.minority_vote ?? 0) === 0) return false;
+
+      const v1 = dec.votes.find((v) => v.member?.last_name === j1);
+      const v2 = dec.votes.find((v) => v.member?.last_name === j2);
+      if (!v1 || !v2 || v1.vote === "none" || v2.vote === "none") return false;
+
+      const same = v1.vote === v2.vote;
+      return mode === "agreed" ? same : !same;
+    })
+    .map(rowToCaseSummary);
 }
 
 // ---------------------------------------------------------------------------

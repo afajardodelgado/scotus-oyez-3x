@@ -23,6 +23,16 @@ export function getTimelineDate(
   return formatTimestamp(entry.dates[0]);
 }
 
+export function getTimelineTimestamp(
+  timeline: { event: string; dates: number[] }[] | null,
+  event: string,
+): number | null {
+  if (!timeline) return null;
+  const entry = timeline.find((t) => t.event === event);
+  if (!entry || !entry.dates || entry.dates.length === 0) return null;
+  return entry.dates[0];
+}
+
 export function getCaseStage(
   timeline: { event: string; dates: number[] }[] | null,
   isDecided: boolean,

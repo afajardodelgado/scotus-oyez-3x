@@ -32,6 +32,9 @@ export default function TermSelector({
   const handleTermChange = (term: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("term", term);
+    params.delete("stage");
+    params.delete("split");
+    params.delete("sort");
     router.push(`${baseUrl}?${params.toString()}`);
     setOpen(false);
   };
